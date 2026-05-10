@@ -8,6 +8,7 @@ SOURCE_PATH="$ROOT_DIR/Sources/CodexAccountSwitcher/main.swift"
 EXECUTABLE_PATH="$APP_PATH/Contents/MacOS/Codex Account Switcher"
 ICONSET_PATH="$ROOT_DIR/build/AppIcon.iconset"
 ICON_PNG_PATH="$ROOT_DIR/build/AppIcon-1024.png"
+SOURCE_ICON_PNG_PATH="$ROOT_DIR/Assets/AppIcon-1024.png"
 ICON_PATH="$APP_PATH/Contents/Resources/AppIcon.icns"
 
 chmod +x "$SCRIPT_PATH"
@@ -39,7 +40,11 @@ cat > "$APP_PATH/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-swift "$ROOT_DIR/scripts/make-app-icon.swift" "$ICON_PNG_PATH"
+if [[ -f "$SOURCE_ICON_PNG_PATH" ]]; then
+  cp "$SOURCE_ICON_PNG_PATH" "$ICON_PNG_PATH"
+else
+  swift "$ROOT_DIR/scripts/make-app-icon.swift" "$ICON_PNG_PATH"
+fi
 rm -rf "$ICONSET_PATH"
 mkdir -p "$ICONSET_PATH"
 sips -z 16 16 "$ICON_PNG_PATH" --out "$ICONSET_PATH/icon_16x16.png" >/dev/null

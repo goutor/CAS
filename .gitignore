@@ -1,0 +1,30 @@
+.DS_Store
+build/
+*.xcuserstate
+*.swp
+
+# Built macOS app bundles and generated icon assets
+*.app/
+MacOS/build/
+MacOS/*.app/
+
+# Never commit local Codex/CAS sessions or imported profiles.
+.codex/
+.codex-account-switcher/
+profiles/
+**/profiles/
+**/auth.json
+**/Cookies
+**/Cookies-journal
+**/Local Storage/
+**/Session Storage/
+**/Partitions/
+**/Network Persistent State
+**/SharedStorage
+**/SharedStorage-wal
+**/Trust Tokens
+**/Trust Tokens-journal
+**/TransportSecurity
+**/DIPS
+**/DIPS-wal
+**/blob_storage/

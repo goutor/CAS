@@ -1731,45 +1731,52 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text("Codex Account Switcher")
-                        .font(.title2.weight(.semibold))
-                    Text("v1.01")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                Text(language == .russian ? "Добавленные профили: \(store.profiles.count)" : "Active profile: \(store.activeProfileName)")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("Codex Account Switcher")
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(1)
+                    .layoutPriority(2)
+                Text("v1.01")
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            Spacer()
-            Picker("Language", selection: $languageRawValue) {
-                ForEach(AppLanguage.allCases) { item in
-                    Text(item.rawValue).tag(item.rawValue)
+            HStack(alignment: .center, spacing: 10) {
+                Text(language == .russian ? "Language" : "Язык")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(width: 82, alignment: .leading)
+                Picker("Language", selection: $languageRawValue) {
+                    ForEach(AppLanguage.allCases) { item in
+                        Text(item.rawValue).tag(item.rawValue)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 110)
-            Button {
-                openExternalURL("https://t.me/b_tier")
-            } label: {
-                Label("Telegram", systemImage: "paperplane")
-            }
-            Button {
-                openExternalURL("https://github.com/goutor/CAS")
-            } label: {
-                Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
-            }
-            Button {
-                store.refreshAndUpdateActiveLimits()
-            } label: {
-                Label(tr("Refresh", "Обновить"), systemImage: "arrow.clockwise")
-            }
-            Button {
-                store.revealProfilesFolder()
-            } label: {
-                Label(tr("Profiles folder", "Папка профилей"), systemImage: "folder")
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 110)
+                Button {
+                    openExternalURL("https://t.me/b_tier")
+                } label: {
+                    Label("Telegram", systemImage: "paperplane")
+                }
+                Button {
+                    openExternalURL("https://github.com/goutor/CAS")
+                } label: {
+                    Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+                Button {
+                    store.refreshAndUpdateActiveLimits()
+                } label: {
+                    Label(tr("Refresh", "Обновить"), systemImage: "arrow.clockwise")
+                }
+                Button {
+                    store.revealProfilesFolder()
+                } label: {
+                    Label(tr("Profiles folder", "Папка профилей"), systemImage: "folder")
+                }
+                Spacer(minLength: 0)
             }
         }
         .padding(20)
@@ -2036,8 +2043,59 @@ struct ContentView: View {
     }
 
     private var statusText: String {
-        guard store.messageShowsProgress else { return store.message }
-        return store.message + String(repeating: ".", count: statusDotStep + 1)
+        let base = localizedStatusMessage(store.message)
+        guard store.messageShowsProgress else { return base }
+        return base + String(repeating: ".", count: statusDotStep + 1)
+    }
+
+    private func localizedStatusMessage(_ message: String) -> String {
+        guard language == .russian else { return message }
+
+        if message == "Idle" { return "Ожидание действий" }
+        if message == "Error" { return "Ошибка" }
+        if message == "Login canceled" { return "Вход отменён" }
+        if message == "Login canceled: new account was not created" {
+            return "Вход отменён: новый аккаунт не создан"
+        }
+        if message == "Duplicate was not saved" { return "Дубль не сохранён" }
+
+        if message.hasPrefix("Session saved: ") {
+            return "Сессия сохранена: " + String(message.dropFirst("Session saved: ".count))
+        }
+        if message.hasPrefix("Waiting for login: ") {
+            return "Ожидание логина: " + String(message.dropFirst("Waiting for login: ".count))
+        }
+        if message.hasPrefix("Account saved: ") {
+            return "Аккаунт сохранён: " + String(message.dropFirst("Account saved: ".count))
+        }
+        if message.hasPrefix("Login canceled, restored ") {
+            return "Вход отменён, вернул " + String(message.dropFirst("Login canceled, restored ".count))
+        }
+        if message.hasPrefix("Switching to ") {
+            return "Идёт переключение на " + String(message.dropFirst("Switching to ".count))
+        }
+        if message.hasPrefix("Switched successfully to ") {
+            return "Успешно переключено на " + String(message.dropFirst("Switched successfully to ".count))
+        }
+        if message.hasPrefix("Profile deleted: ") {
+            return "Профиль удалён: " + String(message.dropFirst("Profile deleted: ".count))
+        }
+        if message.hasPrefix("Profile renamed: ") {
+            return "Профиль переименован: " + String(message.dropFirst("Profile renamed: ".count))
+        }
+        if message.hasPrefix("Imported: ") && message.contains("; duplicates skipped") {
+            let list = String(
+                message
+                    .dropFirst("Imported: ".count)
+                    .replacingOccurrences(of: "; duplicates skipped", with: "")
+            )
+            return "Импортировано: \(list); дубли пропущены"
+        }
+        if message.hasPrefix("Imported: ") {
+            return "Импортировано: " + String(message.dropFirst("Imported: ".count))
+        }
+
+        return message
     }
 
     private func beginLogin() {
@@ -2079,16 +2137,16 @@ struct ContentView: View {
     private func profileContents(_ profile: CodexProfile) -> String {
         var parts: [String] = []
         if profile.hasBrowserSession {
-            parts.append("вход ChatGPT/Codex")
+            parts.append(tr("ChatGPT/Codex login", "вход ChatGPT/Codex"))
         }
         if profile.hasAuth {
             parts.append("CLI auth.json")
         }
-        return parts.isEmpty ? "пусто" : parts.joined(separator: " + ")
+        return parts.isEmpty ? tr("empty", "пусто") : parts.joined(separator: " + ")
     }
 
     private func errorListText(_ error: ProfileErrorSnapshot) -> String {
-        "Ошибка: \(error.code)"
+        "\(tr("Error", "Ошибка")): \(error.code)"
     }
 
     private func profileRowStatusStyle(_ profile: CodexProfile, now: Date) -> AnyShapeStyle {
@@ -2103,7 +2161,7 @@ struct ContentView: View {
 
     private func shortLimitsText(_ limits: CodexLimitSnapshot?, now: Date) -> String {
         guard let limits else {
-            return "лимиты: жду данных Codex"
+            return tr("limits: waiting for Codex data", "лимиты: жду данных Codex")
         }
         if let remaining = limits.remainingPercent {
             if remaining <= 0 {
@@ -2117,47 +2175,47 @@ struct ContentView: View {
             }
             return "\(planPrefix(limits))~\(formatPercent(secondaryRemaining)), \(compactResetText(limits, now: now))"
         }
-        return "лимиты: жду данных Codex"
+        return tr("limits: waiting for Codex data", "лимиты: жду данных Codex")
     }
 
     private func detailedLimitsText(_ limits: CodexLimitSnapshot?, now: Date) -> String {
         guard let limits else {
-            return "нет данных: Codex ещё не записал rate_limits для этого аккаунта"
+            return tr("no data: Codex has not written rate_limits for this account yet", "нет данных: Codex ещё не записал rate_limits для этого аккаунта")
         }
         var parts: [String] = []
         if let remaining = limits.remainingPercent {
-            parts.append("\(formatWindow(limits.windowMinutes)): осталось \(remaining <= 0 ? "0%" : "~\(formatPercent(remaining))")")
+            parts.append("\(formatWindow(limits.windowMinutes)): \(tr("left", "осталось")) \(remaining <= 0 ? "0%" : "~\(formatPercent(remaining))")")
         }
         if let secondaryRemaining = limits.secondaryRemainingPercent {
-            parts.append("\(formatWindow(limits.secondaryWindowMinutes)): осталось \(secondaryRemaining <= 0 ? "0%" : "~\(formatPercent(secondaryRemaining))")")
+            parts.append("\(formatWindow(limits.secondaryWindowMinutes)): \(tr("left", "осталось")) \(secondaryRemaining <= 0 ? "0%" : "~\(formatPercent(secondaryRemaining))")")
         }
         if let sourceTimestamp = limits.sourceTimestamp ?? Optional(limits.capturedAt) {
-            parts.append("получено \(formatAge(now.timeIntervalSince(sourceTimestamp))) назад")
+            parts.append(tr("received", "получено") + " \(formatAge(now.timeIntervalSince(sourceTimestamp))) " + tr("ago", "назад"))
         }
         if let resetText = resetText(limits) {
             parts.append(resetText)
         }
         if let planType = limits.planType, !planType.isEmpty {
-            parts.append("план \(displayPlan(planType))")
+            parts.append("\(tr("plan", "план")) \(displayPlan(planType))")
         }
-        return parts.isEmpty ? "нет данных" : parts.joined(separator: ", ")
+        return parts.isEmpty ? tr("no data", "нет данных") : parts.joined(separator: ", ")
     }
 
     private func snapshotAgeSuffix(_ limits: CodexLimitSnapshot, now: Date) -> String {
         let timestamp = limits.sourceTimestamp ?? limits.capturedAt
-        return ", \(formatAge(now.timeIntervalSince(timestamp))) назад"
+        return ", \(formatAge(now.timeIntervalSince(timestamp))) \(tr("ago", "назад"))"
     }
 
     private func compactResetText(_ limits: CodexLimitSnapshot, now: Date) -> String {
         let resets = [limits.resetsAt, limits.secondaryResetsAt].compactMap { $0 }
         guard let nextReset = resets.filter({ $0 > now }).min() ?? resets.max() else {
             let timestamp = limits.sourceTimestamp ?? limits.capturedAt
-            return "\(formatAge(now.timeIntervalSince(timestamp))) назад"
+            return "\(formatAge(now.timeIntervalSince(timestamp))) \(tr("ago", "назад"))"
         }
         if nextReset > now {
-            return "сброс через \(formatDuration(nextReset.timeIntervalSince(now)))"
+            return tr("reset in", "сброс через") + " \(formatDuration(nextReset.timeIntervalSince(now)))"
         }
-        return "сброс \(formatDate(nextReset))"
+        return tr("reset", "сброс") + " \(formatDate(nextReset))"
     }
 
     private func planPrefix(_ limits: CodexLimitSnapshot) -> String {
@@ -2168,21 +2226,21 @@ struct ContentView: View {
     private func resetText(_ limits: CodexLimitSnapshot) -> String? {
         let resets = [limits.resetsAt, limits.secondaryResetsAt].compactMap { $0 }
         guard !resets.isEmpty else { return nil }
-        return "сброс: \(resets.map(formatDate).joined(separator: ", "))"
+        return tr("reset", "сброс") + ": \(resets.map(formatDate).joined(separator: ", "))"
     }
 
     private func formatAge(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds.rounded(.down)))
         if total >= 86400 {
-            return "\(total / 86400) д."
+            return "\(total / 86400) " + tr("d.", "д.")
         }
         if total >= 3600 {
-            return "\(total / 3600) ч."
+            return "\(total / 3600) " + tr("h.", "ч.")
         }
         if total >= 60 {
-            return "\(total / 60) мин."
+            return "\(total / 60) " + tr("min.", "мин.")
         }
-        return "\(total) сек."
+        return "\(total) " + tr("sec.", "сек.")
     }
 
     private func formatPercent(_ value: Double) -> String {
@@ -2193,17 +2251,17 @@ struct ContentView: View {
     }
 
     private func formatWindow(_ minutes: Int?) -> String {
-        guard let minutes else { return "лимит" }
+        guard let minutes else { return tr("limit", "лимит") }
         if minutes % 10080 == 0 {
-            return "\(minutes / 10080) нед."
+            return "\(minutes / 10080) " + tr("wk.", "нед.")
         }
         if minutes % 1440 == 0 {
-            return "\(minutes / 1440) дн."
+            return "\(minutes / 1440) " + tr("day", "дн.")
         }
         if minutes % 60 == 0 {
-            return "\(minutes / 60) ч."
+            return "\(minutes / 60) " + tr("h.", "ч.")
         }
-        return "\(minutes) мин."
+        return "\(minutes) " + tr("min.", "мин.")
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
@@ -2214,15 +2272,15 @@ struct ContentView: View {
         let seconds = total % 60
 
         if days > 0 {
-            return "\(days) д. \(hours) ч."
+            return "\(days) " + tr("d.", "д.") + " \(hours) " + tr("h.", "ч.")
         }
         if hours > 0 {
-            return "\(hours) ч. \(minutes) мин."
+            return "\(hours) " + tr("h.", "ч.") + " \(minutes) " + tr("min.", "мин.")
         }
         if minutes > 0 {
-            return "\(minutes) мин. \(seconds) сек."
+            return "\(minutes) " + tr("min.", "мин.") + " \(seconds) " + tr("sec.", "сек.")
         }
-        return "\(seconds) сек."
+        return "\(seconds) " + tr("sec.", "сек.")
     }
 
     private func displayPlan(_ plan: String) -> String {

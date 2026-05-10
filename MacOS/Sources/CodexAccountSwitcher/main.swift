@@ -3,6 +3,12 @@ import CryptoKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case english = "EN"
+    case russian = "RU"
+    var id: String { rawValue }
+}
+
 struct CodexProfile: Identifiable, Hashable {
     let name: String
     let profileURL: URL
@@ -64,9 +70,9 @@ struct ProfileErrorSnapshot: Codable, Hashable {
 final class AccountStore: ObservableObject {
     @Published var profiles: [CodexProfile] = []
     @Published var selectedProfileID: String?
-    @Published var activeProfileName: String = "не выбран"
+    @Published var activeProfileName: String = "none selected"
     @Published var pendingProfileName: String?
-    @Published var message: String = "Ожидание действий"
+    @Published var message: String = "Idle"
     @Published var messageShowsProgress: Bool = false
     @Published var errorMessage: String?
 
@@ -125,7 +131,7 @@ final class AccountStore: ObservableObject {
 
     func refresh() {
         ensureDirectories()
-        activeProfileName = readActiveProfile() ?? "не выбран"
+        activeProfileName = readActiveProfile() ?? "none selected"
         pendingProfileName = readPendingProfile()
 
         let urls = (try? fileManager.contentsOfDirectory(
@@ -210,7 +216,7 @@ final class AccountStore: ObservableObject {
         do {
             let name = try sanitizedProfileName(rawName)
             guard fileManager.fileExists(atPath: authURL.path) || fileManager.fileExists(atPath: codexAppSupportDir.path) else {
-                throw SwitcherError.userFacing("Не найдены данные входа Codex. Сначала войдите в Codex вручную.")
+                throw SwitcherError.userFacing("Codex login data not found. Sign in to Codex first.")
             }
             if let duplicateKey = currentSessionDuplicateKey(),
                let duplicate = findProfileMatchingDuplicateKey(duplicateKey, excluding: name) {
@@ -224,7 +230,7 @@ final class AccountStore: ObservableObject {
             let pending = readPendingProfile()
             let active = readActiveProfile()
             if fileManager.fileExists(atPath: profileDir.path), pending != name, active != name {
-                throw SwitcherError.userFacing("Профиль \(name) уже существует. Выберите другое название.")
+                throw SwitcherError.userFacing("Profile \(name) already exists. Choose another name.")
             }
             try fileManager.createDirectory(at: profileDir, withIntermediateDirectories: true)
             try saveAuthSnapshot(to: profileDir)
@@ -238,7 +244,7 @@ final class AccountStore: ObservableObject {
             }
             openCodex()
             log("Saved current session as '\(name)'")
-            setStatus("Сессия сохранена: \(name)")
+            setStatus("Session saved: \(name)")
             refresh()
         } catch {
             show(error)
@@ -249,7 +255,7 @@ final class AccountStore: ObservableObject {
         do {
             let name = try sanitizedProfileName(rawName)
             guard !profileNameExists(name) else {
-                throw SwitcherError.userFacing("Профиль \(name) уже существует. Выберите другое название.")
+                throw SwitcherError.userFacing("Profile \(name) already exists. Choose another name.")
             }
             ensureDirectories()
             let previousProfile = readActiveProfile()
@@ -264,7 +270,7 @@ final class AccountStore: ObservableObject {
             try? fileManager.removeItem(at: currentProfileURL)
             openCodex()
             log("Started login flow for '\(name)'")
-            setStatus("Ожидание логина: \(name)", autoClear: false)
+            setStatus("Waiting for login: \(name)", autoClear: false)
             refresh()
         } catch {
             show(error)
@@ -273,11 +279,11 @@ final class AccountStore: ObservableObject {
 
     func savePendingProfileAfterLogin() {
         guard let pendingProfileName else {
-            show(SwitcherError.userFacing("Нет аккаунта в режиме входа."))
+            show(SwitcherError.userFacing("No account is currently in login mode."))
             return
         }
         guard sessionChangedSincePendingLogin() else {
-            cancelPendingLogin(message: "Вход отменён: новый аккаунт не создан")
+            cancelPendingLogin(message: "Login canceled: new account was not created")
             return
         }
         if let duplicateKey = currentSessionDuplicateKey(),
@@ -300,15 +306,15 @@ final class AccountStore: ObservableObject {
             if sessionChangedSincePendingLogin() {
                 savePendingProfileAfterLogin()
                 if errorMessage == nil {
-                    setStatus("Аккаунт сохранён: \(pending)")
+                    setStatus("Account saved: \(pending)")
                 }
             } else {
-                cancelPendingLogin(message: "Вход отменён: новый аккаунт не создан")
+                cancelPendingLogin(message: "Login canceled: new account was not created")
             }
         } else if !isCodexRunning() && pendingLoginAge() > 8 {
             cancelPendingLogin()
         } else {
-            setStatus("Ожидание логина: \(pending)", autoClear: false)
+            setStatus("Waiting for login: \(pending)", autoClear: false)
         }
     }
 
@@ -324,9 +330,9 @@ final class AccountStore: ObservableObject {
         if let previous,
            let profile = profiles.first(where: { $0.name.caseInsensitiveCompare(previous) == .orderedSame }) {
             switchTo(profile)
-            setStatus(customMessage ?? "Вход отменён, вернул \(profile.name)")
+            setStatus(customMessage ?? "Login canceled, restored \(profile.name)")
         } else {
-            setStatus(customMessage ?? "Вход отменён")
+            setStatus(customMessage ?? "Login canceled")
             refresh()
         }
     }
@@ -366,10 +372,10 @@ final class AccountStore: ObservableObject {
     func switchToSelectedProfile() {
         guard let selectedProfileID,
               let profile = profiles.first(where: { $0.id == selectedProfileID }) else {
-            show(SwitcherError.userFacing("Выберите профиль для переключения."))
+            show(SwitcherError.userFacing("Select a profile to switch."))
             return
         }
-        setStatus("Идёт переключение на \(profile.name)", autoClear: false, showsProgress: true)
+        setStatus("Switching to \(profile.name)", autoClear: false, showsProgress: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.beginInteractiveSwitch(to: profile)
         }
@@ -377,14 +383,14 @@ final class AccountStore: ObservableObject {
 
     private func beginInteractiveSwitch(to profile: CodexProfile) {
         guard profile.hasAuth || profile.hasBrowserSession else {
-            show(SwitcherError.userFacing("В профиле \(profile.name) нет сохранённой сессии."))
+            show(SwitcherError.userFacing("Profile \(profile.name) has no saved session."))
             return
         }
         ensureDirectories()
         quitCodex()
         refreshActiveProfileSessionIfPossible()
         refresh()
-        setStatus("Идёт переключение на \(profile.name)", autoClear: false, showsProgress: true)
+        setStatus("Switching to \(profile.name)", autoClear: false, showsProgress: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.switchTo(profile, statusAlreadyStarted: true, outgoingAlreadyRefreshed: true)
         }
@@ -393,12 +399,12 @@ final class AccountStore: ObservableObject {
     func switchTo(_ profile: CodexProfile, statusAlreadyStarted: Bool = false, outgoingAlreadyRefreshed: Bool = false) {
         do {
             guard profile.hasAuth || profile.hasBrowserSession else {
-                throw SwitcherError.userFacing("В профиле \(profile.name) нет сохранённой сессии.")
+                throw SwitcherError.userFacing("Profile \(profile.name) has no saved session.")
             }
 
             ensureDirectories()
             if !statusAlreadyStarted {
-                setStatus("Идёт переключение на \(profile.name)", autoClear: false, showsProgress: true)
+                setStatus("Switching to \(profile.name)", autoClear: false, showsProgress: true)
             }
             if !outgoingAlreadyRefreshed {
                 quitCodex()
@@ -413,7 +419,7 @@ final class AccountStore: ObservableObject {
             refresh()
             openCodex()
             log("Switched to '\(profile.name)'")
-            setStatus("Успешно переключено на \(profile.name)")
+            setStatus("Switched successfully to \(profile.name)")
             schedulePostSwitchLimitRefresh(for: profile.name)
             refresh()
         } catch {
@@ -443,7 +449,7 @@ final class AccountStore: ObservableObject {
             }
             log("Deleted profile '\(profileID)'")
             selectedProfileID = nil
-            setStatus("Профиль удалён: \(profileID)")
+            setStatus("Profile deleted: \(profileID)")
             refresh()
         } catch {
             show(error)
@@ -459,7 +465,7 @@ final class AccountStore: ObservableObject {
             let target = profilesDir.appendingPathComponent(newName, isDirectory: true)
             guard fileManager.fileExists(atPath: source.path) else { return }
             guard !fileManager.fileExists(atPath: target.path) else {
-                throw SwitcherError.userFacing("Профиль \(newName) уже существует.")
+                throw SwitcherError.userFacing("Profile \(newName) already exists.")
             }
             try fileManager.moveItem(at: source, to: target)
             if readActiveProfile() == profileID {
@@ -469,7 +475,7 @@ final class AccountStore: ObservableObject {
                 try writePendingProfile(newName)
             }
             selectedProfileID = newName
-            setStatus("Профиль переименован: \(newName)")
+            setStatus("Profile renamed: \(newName)")
             log("Renamed profile '\(profileID)' to '\(newName)'")
             refresh()
         } catch {
@@ -499,11 +505,11 @@ final class AccountStore: ObservableObject {
             }
             refresh()
             if !imported.isEmpty, skippedDuplicates > 0 {
-                setStatus("Импортировано: \(imported.joined(separator: ", ")); дубли пропущены")
+                setStatus("Imported: \(imported.joined(separator: ", ")); duplicates skipped")
             } else if !imported.isEmpty {
-                setStatus("Импортировано: \(imported.joined(separator: ", "))")
+                setStatus("Imported: \(imported.joined(separator: ", "))")
             } else if skippedDuplicates > 0 {
-                setStatus("Дубль не сохранён")
+                setStatus("Duplicate was not saved")
             }
         } catch {
             show(error)
@@ -519,10 +525,10 @@ final class AccountStore: ObservableObject {
     private func importProfileItem(from source: URL) throws -> ImportResult {
         let standardizedSource = source.standardizedFileURL
         guard fileManager.fileExists(atPath: standardizedSource.path) else {
-            throw SwitcherError.userFacing("Файл или папка не найдены.")
+            throw SwitcherError.userFacing("File or folder not found.")
         }
         guard let duplicateKey = candidateDuplicateKey(at: standardizedSource) else {
-            throw SwitcherError.userFacing("Перетащите папку профиля, папку Codex или файл auth.json/сессии.")
+            throw SwitcherError.userFacing("Drop a profile folder, Codex folder, or auth.json/session file.")
         }
         if let existing = findProfileMatchingDuplicateKey(duplicateKey, excluding: nil) {
             return .duplicate(existing)
@@ -1121,7 +1127,7 @@ final class AccountStore: ObservableObject {
         } else {
             refresh()
         }
-        setStatus("Дубль не сохранён")
+        setStatus("Duplicate was not saved")
     }
 
     private func skipDuplicateSave(existingName: String) {
@@ -1134,7 +1140,7 @@ final class AccountStore: ObservableObject {
         if let profile = profiles.first(where: { $0.name.caseInsensitiveCompare(existingName) == .orderedSame }) {
             selectedProfileID = profile.id
         }
-        setStatus("Дубль не сохранён")
+        setStatus("Duplicate was not saved")
         refresh()
     }
 
@@ -1203,14 +1209,14 @@ final class AccountStore: ObservableObject {
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")
         guard !trimmed.isEmpty else {
-            throw SwitcherError.userFacing("Введите имя профиля.")
+            throw SwitcherError.userFacing("Enter a profile name.")
         }
         let pattern = #"^[A-Za-z0-9 ._-]+$"#
         guard trimmed.range(of: pattern, options: .regularExpression) != nil else {
-            throw SwitcherError.userFacing("Имя профиля может содержать только латиницу, цифры, пробел, точку, дефис и подчёркивание.")
+            throw SwitcherError.userFacing("Profile name can contain only Latin letters, numbers, space, dot, dash, and underscore.")
         }
         guard trimmed != "." && trimmed != ".." else {
-            throw SwitcherError.userFacing("Такое имя профиля использовать нельзя.")
+            throw SwitcherError.userFacing("This profile name is not allowed.")
         }
         return trimmed
     }
@@ -1547,7 +1553,7 @@ final class AccountStore: ObservableObject {
             text = error.localizedDescription
         }
         errorMessage = text
-        setStatus("Ошибка", autoClear: false)
+        setStatus("Error", autoClear: false)
         log("ERROR: \(text)")
     }
 
@@ -1559,7 +1565,7 @@ final class AccountStore: ObservableObject {
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             if self.readPendingProfile() == nil {
-                self.message = "Ожидание действий"
+                self.message = "Idle"
                 self.messageShowsProgress = false
             }
         }
@@ -1617,6 +1623,7 @@ extension JSONDecoder {
 
 struct ContentView: View {
     @StateObject private var store = AccountStore()
+    @AppStorage("cas.language") private var languageRawValue: String = AppLanguage.english.rawValue
     @State private var newProfileName = ""
     @State private var lastSuggestedProfileName = ""
     @State private var renameProfileName = ""
@@ -1633,6 +1640,15 @@ struct ContentView: View {
     private var selectedProfile: CodexProfile? {
         guard let selected = store.selectedProfileID else { return nil }
         return store.profiles.first(where: { $0.id == selected })
+    }
+
+    private var language: AppLanguage {
+        get { AppLanguage(rawValue: languageRawValue) ?? .english }
+        set { languageRawValue = newValue.rawValue }
+    }
+
+    private func tr(_ en: String, _ ru: String) -> String {
+        language == .russian ? ru : en
     }
 
     private var filteredProfiles: [CodexProfile] {
@@ -1685,7 +1701,7 @@ struct ContentView: View {
             store.importDroppedProviders(providers)
             return true
         }
-        .alert("Ошибка", isPresented: Binding(
+        .alert(tr("Error", "Ошибка"), isPresented: Binding(
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } }
         )) {
@@ -1694,23 +1710,23 @@ struct ContentView: View {
             Text(store.errorMessage ?? "")
         }
         .confirmationDialog(
-            "Удалить профиль?",
+            tr("Delete profile?", "Удалить профиль?"),
             isPresented: $showingDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Удалить", role: .destructive) {
+            Button(tr("Delete", "Удалить"), role: .destructive) {
                 store.deleteSelectedProfile()
             }
-            Button("Отмена", role: .cancel) {}
+            Button(tr("Cancel", "Отмена"), role: .cancel) {}
         } message: {
             Text(selectedProfile?.name ?? "")
         }
-        .alert("Переименовать профиль", isPresented: $showingRenameDialog) {
-            TextField("Название", text: $renameProfileName)
-            Button("Сохранить") {
+        .alert(tr("Rename profile", "Переименовать профиль"), isPresented: $showingRenameDialog) {
+            TextField(tr("Name", "Название"), text: $renameProfileName)
+            Button(tr("Save", "Сохранить")) {
                 store.renameSelectedProfile(to: renameProfileName)
             }
-            Button("Отмена", role: .cancel) {}
+            Button(tr("Cancel", "Отмена"), role: .cancel) {}
         }
     }
 
@@ -1720,14 +1736,21 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Text("Codex Account Switcher")
                         .font(.title2.weight(.semibold))
-                    Text("v1.0")
+                    Text("v1.01")
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                Text("Активный профиль: \(store.activeProfileName)")
+                Text(language == .russian ? "Добавленные профили: \(store.profiles.count)" : "Active profile: \(store.activeProfileName)")
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Picker("Language", selection: $languageRawValue) {
+                ForEach(AppLanguage.allCases) { item in
+                    Text(item.rawValue).tag(item.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 110)
             Button {
                 openExternalURL("https://t.me/b_tier")
             } label: {
@@ -1741,12 +1764,12 @@ struct ContentView: View {
             Button {
                 store.refreshAndUpdateActiveLimits()
             } label: {
-                Label("Обновить", systemImage: "arrow.clockwise")
+                Label(tr("Refresh", "Обновить"), systemImage: "arrow.clockwise")
             }
             Button {
                 store.revealProfilesFolder()
             } label: {
-                Label("Папка профилей", systemImage: "folder")
+                Label(tr("Profiles folder", "Папка профилей"), systemImage: "folder")
             }
         }
         .padding(20)
@@ -1770,17 +1793,17 @@ struct ContentView: View {
     private var profileList: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Профили")
+                Text(tr("Profiles", "Профили"))
                     .font(.headline)
                 Spacer()
-                Text("Всего: \(store.profiles.count)")
+                Text(language == .russian ? "Всего: \(store.profiles.count)" : "Total: \(store.profiles.count)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("поиск по названию или почте", text: $profileSearchText)
+                TextField(tr("search by profile name or email", "поиск по названию или почте"), text: $profileSearchText)
                     .textFieldStyle(.plain)
             }
             .padding(.horizontal, 10)
@@ -1809,7 +1832,7 @@ struct ContentView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 30))
                 .foregroundStyle(.secondary)
-            Text("Нет совпадений.")
+            Text(tr("No matches.", "Нет совпадений."))
                 .font(.headline)
             Spacer()
         }
@@ -1821,9 +1844,9 @@ struct ContentView: View {
             Image(systemName: "person.crop.circle.badge.plus")
                 .font(.system(size: 34))
                 .foregroundStyle(.secondary)
-            Text("Пока нет сохранённых профилей.")
+            Text(tr("No saved profiles yet.", "Пока нет сохранённых профилей."))
                 .font(.headline)
-            Text("Введите имя аккаунта справа и нажмите «Войти». После логина профиль сохранится автоматически.")
+            Text(tr("Enter an account name on the right and click \"Login\". After login, the profile is saved automatically.", "Введите имя аккаунта справа и нажмите «Войти». После логина профиль сохранится автоматически."))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
@@ -1853,7 +1876,7 @@ struct ContentView: View {
                         .foregroundStyle(.green)
                 }
             }
-            Text(profile.modifiedAt.map(formatDate) ?? "дата неизвестна")
+            Text(profile.modifiedAt.map(formatDate) ?? tr("date unknown", "дата неизвестна"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(profile.error.map(errorListText) ?? shortLimitsText(profile.limits, now: now))
@@ -1870,7 +1893,7 @@ struct ContentView: View {
             if let profile = selectedProfile {
                 selectedPanel(profile)
             } else {
-                Text("Выберите профиль слева.")
+                Text(tr("Select a profile on the left.", "Выберите профиль слева."))
                     .foregroundStyle(.secondary)
                 Spacer()
             }
@@ -1880,16 +1903,16 @@ struct ContentView: View {
 
     private var addAccountPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Добавить аккаунт")
+            Text(tr("Add account", "Добавить аккаунт"))
                 .font(.headline)
             HStack(spacing: 10) {
-                TextField("название аккаунта", text: $newProfileName)
+                TextField(tr("account name", "название аккаунта"), text: $newProfileName)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(beginLogin)
                 Button {
                     beginLogin()
                 } label: {
-                    Label("Войти", systemImage: "person.crop.circle.badge.plus")
+                    Label(tr("Login", "Войти"), systemImage: "person.crop.circle.badge.plus")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(store.pendingProfileName != nil)
@@ -1898,13 +1921,13 @@ struct ContentView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "person.badge.clock")
                         .foregroundStyle(.orange)
-                    Text("Ожидаю вход для \(pending). После успешного логина профиль сохранится сам.")
+                    Text(language == .russian ? "Ожидаю вход для \(pending). После успешного логина профиль сохранится сам." : "Waiting for login for \(pending). After successful login, profile will be saved automatically.")
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
                 .font(.caption)
             }
-            Text("Нажатие «Войти» откроет Codex без старой сессии. Текущий аккаунт будет сохранён перед выходом.")
+            Text(tr("Clicking \"Login\" opens Codex without the previous session. Current account is saved before exit.", "Нажатие «Войти» откроет Codex без старой сессии. Текущий аккаунт будет сохранён перед выходом."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1926,7 +1949,7 @@ struct ContentView: View {
                                 .truncationMode(.middle)
                         }
                     }
-                    Text(profile.error.map(errorListText) ?? (profile.isActive ? "Сейчас активен" : "Сохранённая сессия"))
+                    Text(profile.error.map(errorListText) ?? (profile.isActive ? tr("Currently active", "Сейчас активен") : tr("Saved session", "Сохранённая сессия")))
                         .foregroundStyle(profile.error == nil ? (profile.isActive ? .green : .secondary) : .red)
                 }
                 Spacer()
@@ -1935,7 +1958,7 @@ struct ContentView: View {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 10) {
                 if let error = profile.error {
                     GridRow {
-                        Text("Ошибка")
+                        Text(tr("Error", "Ошибка"))
                             .foregroundStyle(.secondary)
                         Text("\(error.code): \(error.message)")
                             .foregroundStyle(.red)
@@ -1944,26 +1967,26 @@ struct ContentView: View {
                     }
                 }
                 GridRow {
-                    Text("Сохранено")
+                    Text(tr("Saved", "Сохранено"))
                         .foregroundStyle(.secondary)
-                    Text(profile.modifiedAt.map(formatDate) ?? "дата неизвестна")
+                    Text(profile.modifiedAt.map(formatDate) ?? tr("date unknown", "дата неизвестна"))
                 }
                 GridRow {
-                    Text("Лимиты")
+                    Text(tr("Limits", "Лимиты"))
                         .foregroundStyle(.secondary)
                     Text(detailedLimitsText(profile.limits, now: now))
                         .lineLimit(3)
                         .truncationMode(.tail)
                 }
                 GridRow {
-                    Text("Состав")
+                    Text(tr("Contents", "Состав"))
                         .foregroundStyle(.secondary)
                     Text(profileContents(profile))
                         .lineLimit(2)
                         .truncationMode(.middle)
                 }
                 GridRow {
-                    Text("Папка")
+                    Text(tr("Folder", "Папка"))
                         .foregroundStyle(.secondary)
                     Text(profile.profileURL.path)
                         .lineLimit(2)
@@ -1975,7 +1998,7 @@ struct ContentView: View {
                 Button {
                     store.switchToSelectedProfile()
                 } label: {
-                    Label("Переключиться", systemImage: "arrow.triangle.2.circlepath")
+                    Label(tr("Switch", "Переключиться"), systemImage: "arrow.triangle.2.circlepath")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(profile.isActive)
@@ -1984,13 +2007,13 @@ struct ContentView: View {
                     renameProfileName = profile.name
                     showingRenameDialog = true
                 } label: {
-                    Label("Редактировать название", systemImage: "pencil")
+                    Label(tr("Rename", "Редактировать название"), systemImage: "pencil")
                 }
 
                 Button(role: .destructive) {
                     showingDeleteConfirmation = true
                 } label: {
-                    Label("Удалить", systemImage: "trash")
+                    Label(tr("Delete", "Удалить"), systemImage: "trash")
                 }
             }
             Spacer()
@@ -2002,7 +2025,7 @@ struct ContentView: View {
             Text(statusText)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text("Профили хранятся локально: \(store.profilesStoragePath)")
+            Text(language == .russian ? "Профили хранятся локально: \(store.profilesStoragePath)" : "Profiles are stored locally: \(store.profilesStoragePath)")
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)

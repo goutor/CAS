@@ -440,6 +440,10 @@ final class AccountStore: ObservableObject {
 
     func deleteSelectedProfile() {
         guard let profileID = selectedProfileID else { return }
+        deleteProfile(named: profileID)
+    }
+
+    func deleteProfile(named profileID: String) {
         do {
             let target = profilesDir.appendingPathComponent(profileID, isDirectory: true)
             guard fileManager.fileExists(atPath: target.path) else { return }
@@ -1628,7 +1632,7 @@ struct ContentView: View {
     @State private var lastSuggestedProfileName = ""
     @State private var renameProfileName = ""
     @State private var profileSearchText = ""
-    @State private var showingDeleteConfirmation = false
+    @State private var pendingDeleteProfileID: String?
     @State private var showingRenameDialog = false
     @State private var now = Date()
     @State private var statusDotStep = 0
@@ -1709,17 +1713,28 @@ struct ContentView: View {
         } message: {
             Text(store.errorMessage ?? "")
         }
-        .confirmationDialog(
+        .alert(
             tr("Delete profile?", "Удалить профиль?"),
-            isPresented: $showingDeleteConfirmation,
-            titleVisibility: .visible
+            isPresented: Binding(
+                get: { pendingDeleteProfileID != nil },
+                set: { if !$0 { pendingDeleteProfileID = nil } }
+            )
         ) {
             Button(tr("Delete", "Удалить"), role: .destructive) {
-                store.deleteSelectedProfile()
+                if let profileID = pendingDeleteProfileID {
+                    store.deleteProfile(named: profileID)
+                }
+                pendingDeleteProfileID = nil
             }
-            Button(tr("Cancel", "Отмена"), role: .cancel) {}
+            Button(tr("Cancel", "Отмена"), role: .cancel) {
+                pendingDeleteProfileID = nil
+            }
         } message: {
-            Text(selectedProfile?.name ?? "")
+            if let profileID = pendingDeleteProfileID {
+                Text(profileID)
+            } else {
+                Text("")
+            }
         }
         .alert(tr("Rename profile", "Переименовать профиль"), isPresented: $showingRenameDialog) {
             TextField(tr("Name", "Название"), text: $renameProfileName)
@@ -1737,7 +1752,7 @@ struct ContentView: View {
                     .font(.title2.weight(.semibold))
                     .lineLimit(1)
                     .layoutPriority(2)
-                Text("v1.01")
+                Text("v1.02")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -2018,7 +2033,7 @@ struct ContentView: View {
                 }
 
                 Button(role: .destructive) {
-                    showingDeleteConfirmation = true
+                    pendingDeleteProfileID = profile.id
                 } label: {
                     Label(tr("Delete", "Удалить"), systemImage: "trash")
                 }

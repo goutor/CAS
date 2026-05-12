@@ -31,7 +31,7 @@ cat > "$APP_PATH/Contents/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.02</string>
+  <string>1.0.2</string>
   <key>LSMinimumSystemVersion</key>
   <string>10.15</string>
   <key>NSHumanReadableCopyright</key>

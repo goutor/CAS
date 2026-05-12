@@ -1752,7 +1752,7 @@ struct ContentView: View {
                     .font(.title2.weight(.semibold))
                     .lineLimit(1)
                     .layoutPriority(2)
-                Text("v1.02")
+                Text("v1.0.2")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
